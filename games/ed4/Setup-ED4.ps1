@@ -87,8 +87,8 @@ param(
 
     # ゲーム側の画面モード (HKCU\SOFTWARE\FALCOM\<exe>\ScreenMode)
     #   keep       = 触らない（既定。動いている値を壊さない）
-    #   window     = 0 … DLLDV\Win565 系。ED4 はこちらで起動した実績あり
-    #   fullscreen = 1 … DLLDV\Full565 系。ED4 では起動しなかった
+    #   window     = 0 … DLLDV\Win555 / Win565 系。ED4 はこの値でないと起動しない
+    #   fullscreen = 1 … DLLDV\Full565 系。ED4 はこの値では起動しない
     [ValidateSet('keep','window','fullscreen')]
     [string] $GameScreenMode = 'keep',
 
@@ -231,7 +231,6 @@ Write-Ok "ゲーム本体: $ExePath"
 # 相対パスの -GameDir だと ini だけ別フォルダに出てしまうので、ここで絶対パスにする。
 $GameDir = (Resolve-Path -LiteralPath $GameDir).ProviderPath
 $ExePath = Join-Path $GameDir $ExeName
-$gameKey = "HKCU:\SOFTWARE\FALCOM\$ExeBase"
 
 $dlldv = Join-Path $GameDir 'DLLDV'
 if (Test-Path -LiteralPath $dlldv) {
@@ -272,9 +271,15 @@ if (-not $ludusavi) {
 if ($ludusavi) { Write-Ok "ludusavi: $ludusavi" }
 else           { Write-Warn2 'ludusavi.exe が PATH 上に見つかりません。Playnite の設定で絶対パスが必要になります。' }
 
-$ludCfg = Join-Path $env:APPDATA 'ludusavi\config.yaml'
-if (Test-Path -LiteralPath $ludCfg) { Write-Ok "ludusavi 設定: $ludCfg" }
-else { Write-Die "$ludCfg がありません。ludusavi を一度起動して設定を作ってください。" }
+# config.yaml が無ければセーブ同期の手順だけを飛ばす。表示まわりの設定は最後まで行う。
+$ludCfg      = Join-Path $env:APPDATA 'ludusavi\config.yaml'
+$useLudusavi = Test-Path -LiteralPath $ludCfg
+if ($useLudusavi) {
+    Write-Ok "ludusavi 設定: $ludCfg"
+} else {
+    Write-Warn2 "$ludCfg がありません。セーブ同期の設定は飛ばします（表示まわりの設定は行います）。"
+    Write-Info  'セーブ同期を使うなら ludusavi を一度起動して設定を作り、もう一度実行してください。'
+}
 
 # Playnite
 $pnCfg = Join-Path $env:APPDATA 'Playnite\config.json'
@@ -284,15 +289,17 @@ else { Write-Warn2 'Playnite が見つかりません。手順5の登録は手�
 # rclone（クラウド同期に必要）
 # ludusavi は未設定でも apps.rclone: ブロックを書き出すので、"rclone" という
 # 文字列の有無では判定できない。apps.rclone.path の中身を見る。
-$cfgLines   = (Get-Content -LiteralPath $ludCfg -Raw -Encoding UTF8) -split "`r?`n"
-$rcloneIdx  = Find-LineUnder $cfgLines (Find-TopLevel $cfgLines '^apps:\s*$') '^\s+rclone:\s*$'
-$rclonePath = ''
-$rpIdx      = Find-LineUnder $cfgLines $rcloneIdx '^\s+path:\s*'
-if ($rpIdx -ge 0) { $rclonePath = (($cfgLines[$rpIdx] -split ':', 2)[1]).Trim().Trim('"', "'") }
-if ($rclonePath) {
-    Write-Ok "rclone: $rclonePath"
-} else {
-    Write-Warn2 'ludusavi に rclone が設定されていません（apps.rclone.path が空）。クラウド同期は動きません。'
+if ($useLudusavi) {
+    $cfgLines   = (Get-Content -LiteralPath $ludCfg -Raw -Encoding UTF8) -split "`r?`n"
+    $rcloneIdx  = Find-LineUnder $cfgLines (Find-TopLevel $cfgLines '^apps:\s*$') '^\s+rclone:\s*$'
+    $rclonePath = ''
+    $rpIdx      = Find-LineUnder $cfgLines $rcloneIdx '^\s+path:\s*'
+    if ($rpIdx -ge 0) { $rclonePath = (($cfgLines[$rpIdx] -split ':', 2)[1]).Trim().Trim('"', "'") }
+    if ($rclonePath) {
+        Write-Ok "rclone: $rclonePath"
+    } else {
+        Write-Warn2 'ludusavi に rclone が設定されていません（apps.rclone.path が空）。クラウド同期は動きません。'
+    }
 }
 
 # ============================================== 1. cnc-ddraw の入手と配置
@@ -559,8 +566,6 @@ if ($layerValue -notmatch 'HIGHDPIAWARE') {
 if ($layerValue -match 'WINXPSP3') {
     Write-Warn2 'WINXPSP3 が入っています。これが UAC 昇格を誘発し、ludusavi wrap が os error 740 で失敗します。'
 }
-Write-Info 'WINXPSP3 は入れません。これが UAC 昇格を誘発し、'
-Write-Info 'ludusavi wrap の CreateProcess が os error 740 で失敗します。'
 
 # --- 3b. ゲーム設定 -----------------------------------------------------------
 
@@ -590,7 +595,7 @@ if ($SkipGameSettings) {
 else {
     # ScreenMode
     #   0 → DLLDV\Win555 / Win565   （ゲーム自前のウィンドウ描画。ED4 はこちらで起動する）
-    #   1 → DLLDV\Full555 / Full565 （排他フルスクリーン。ED4 では起動しなかった）
+    #   1 → DLLDV\Full555 / Full565 （排他フルスクリーン。ED4 はこの値では起動しない）
     # 既定は 'keep' = 触らない。理由は docs/setup.md。
     #
     # EnableDirect3D
@@ -606,9 +611,9 @@ else {
             if ($g0 -and $g0.PSObject.Properties.Name -contains 'ScreenMode') { $sm = $g0.ScreenMode }
         }
         if ($null -eq $sm) {
-            Write-Warn2 'ScreenMode が未設定です。ED4_ENV.EXE を一度開いて画面モードを決めてください（ED4 はウィンドウ=0 で動いた実績があります）。'
+            Write-Warn2 'ScreenMode が未設定です。ED4_ENV.EXE を一度開いて画面モードを決めてください（ED4 は 0 (ウィンドウ) でないと起動しません）。'
         } elseif ($sm -ne 0) {
-            Write-Warn2 "ScreenMode = $sm (フルスクリーン) です。ED4 はこの値では起動しない実績があります。-GameScreenMode window で 0 にできます。"
+            Write-Warn2 "ScreenMode = $sm (フルスクリーン) です。ED4 はこの値では起動しません。-GameScreenMode window で 0 にできます。"
         } else {
             Write-Ok "ScreenMode = 0 (ウィンドウ) のまま触りません"
         }
@@ -640,98 +645,105 @@ else {
 
 Write-Head '4. ludusavi の設定'
 
-$yaml     = Get-Content -LiteralPath $ludCfg -Raw -Encoding UTF8
-$ludLines = $yaml -split "`r?`n"
-$dirty    = $false
-
-# --- 4a. カスタムゲーム -------------------------------------------------------
-
-$entry = @(
-    "  - name: $GameName"
-    '    integration: override'
-    '    files:'
-    "      - `"<winAppData>/$SaveRelPath`""
-    '    registry: []'
-    '    installDir: []'
-    '    winePrefix: []'
-)
-
-# 登録済みかどうかは customGames: の配下にある "- name:" 行だけを見る。
-# 全文の部分一致だと、前方一致する別名（"... 完全版" など）を誤検出し、
-# ludusavi が引用符付きで書き戻したときには逆に毎回重複エントリを足してしまう。
-$cgIdx      = Find-TopLevel $ludLines '^customGames:\s*(\[\]\s*)?$'
-$nameRe     = '^\s*-\s+name:\s*"?' + [regex]::Escape($GameName) + '"?\s*$'
-$registered = ($cgIdx -ge 0) -and ((Find-LineUnder $ludLines $cgIdx $nameRe) -ge 0)
-
-if ($registered) {
-    Write-Ok "カスタムゲーム `"$GameName`" は登録済み"
-}
-elseif ($VerifyOnly) {
-    Write-Warn2 "カスタムゲーム `"$GameName`" が ludusavi に登録されていません。"
-}
-elseif ($cgIdx -ge 0) {
-    if (Test-Change "customGames に `"$GameName`" を追加") {
-        if ($ludLines[$cgIdx] -match '\[\]') { $ludLines[$cgIdx] = 'customGames:' }
-        $ludLines = Add-LinesAfter -Lines $ludLines -Index $cgIdx -Insert $entry
-        $dirty = $true
-    }
+if (-not $useLudusavi) {
+    Write-Info 'config.yaml が無いため、セーブ同期の設定は行いません。'
+    Write-Info 'セーブ同期を使うなら ludusavi を一度起動してから再実行してください。'
 }
 else {
-    if (Test-Change "customGames セクションを作って `"$GameName`" を追加") {
-        # 末尾の空行を落としてから追記し、最後に改行を1つだけ残す
-        $tail = @($ludLines)
-        while ($tail.Count -gt 0 -and $tail[$tail.Count - 1] -match '^\s*$') {
-            $tail = @($tail[0..($tail.Count - 2)])
-        }
-        $ludLines = @($tail) + @('customGames:') + $entry + @('')
-        $dirty = $true
+
+    $yaml     = Get-Content -LiteralPath $ludCfg -Raw -Encoding UTF8
+    $ludLines = $yaml -split "`r?`n"
+    $dirty    = $false
+
+    # --- 4a. カスタムゲーム -------------------------------------------------------
+
+    $entry = @(
+        "  - name: $GameName"
+        '    integration: override'
+        '    files:'
+        "      - `"<winAppData>/$SaveRelPath`""
+        '    registry: []'
+        '    installDir: []'
+        '    winePrefix: []'
+    )
+
+    # 登録済みかどうかは customGames: の配下にある "- name:" 行だけを見る。
+    # 全文の部分一致だと、前方一致する別名（"... 完全版" など）を誤検出し、
+    # ludusavi が引用符付きで書き戻したときには逆に毎回重複エントリを足してしまう。
+    $cgIdx      = Find-TopLevel $ludLines '^customGames:\s*(\[\]\s*)?$'
+    $nameRe     = '^\s*-\s+name:\s*"?' + [regex]::Escape($GameName) + '"?\s*$'
+    $registered = ($cgIdx -ge 0) -and ((Find-LineUnder $ludLines $cgIdx $nameRe) -ge 0)
+
+    if ($registered) {
+        Write-Ok "カスタムゲーム `"$GameName`" は登録済み"
     }
-}
-
-# --- 4c. 書き込み -------------------------------------------------------------
-# $dirty は Test-Change が $true を返したときにしか立たないので、
-# -WhatIfOnly / -VerifyOnly でここに入ることはない。
-
-if ($dirty) {
-    Backup-Once $ludCfg
-    Write-Utf8NoBom $ludCfg (($ludLines -join "`n"))
-    Write-Ok 'config.yaml を更新しました。'
-}
-elseif (-not $NoChange) {
-    Write-Info 'config.yaml の変更はありません。'
-}
-
-Write-Info "セーブ先: %APPDATA%\$($SaveRelPath -replace '/','\')"
-Write-Info 'ED4 の設定はレジストリにあるので、ED3 の ED3_CFG.INI のような'
-Write-Info '「同期から外す」指定は不要です。FrameRate は自動的に端末ごとの値になります。'
-
-# 実際に検出できるか確認
-# -VerifyOnly / -WhatIfOnly では実行しない。ludusavi の起動はマニフェスト更新の
-# ネットワークアクセスと %APPDATA%\ludusavi への書き込みを伴うため。
-if ($ludusavi -and -not $NoChange) {
-    Write-Host ''
-    Write-Info 'ludusavi でスキャンして検出できるか確認します...'
-    $prevEnc = $null
-    $prevEap = $ErrorActionPreference
-    try {
-        # PowerShell 5.1 はネイティブコマンドの出力をコンソールのコードページ (日本語環境では
-        # CP932) で解釈する。--api の JSON は UTF-8 なので、揃えないとゲーム名が化けて必ず不一致になる。
-        $prevEnc = [Console]::OutputEncoding
-        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-        # ネイティブコマンドの stderr で終了させない
-        $ErrorActionPreference = 'Continue'
-        $out = & $ludusavi backup --preview --api $GameName 2>&1 | Out-String
-        if ($out -notmatch [regex]::Escape($GameName)) {
-            Write-Warn2 'ludusavi がこのゲームを検出できませんでした。セーブデータが未作成かもしれません。'
-            Write-Info  '一度ゲームを起動してセーブしてから、もう一度試してください。'
-        } else {
-            Write-Ok 'ludusavi が検出しました。'
+    elseif ($VerifyOnly) {
+        Write-Warn2 "カスタムゲーム `"$GameName`" が ludusavi に登録されていません。"
+    }
+    elseif ($cgIdx -ge 0) {
+        if (Test-Change "customGames に `"$GameName`" を追加") {
+            if ($ludLines[$cgIdx] -match '\[\]') { $ludLines[$cgIdx] = 'customGames:' }
+            $ludLines = Add-LinesAfter -Lines $ludLines -Index $cgIdx -Insert $entry
+            $dirty = $true
         }
-    } catch {
-        Write-Warn2 ("ludusavi の実行に失敗: " + $_.Exception.Message)
-    } finally {
-        $ErrorActionPreference = $prevEap
-        if ($prevEnc) { [Console]::OutputEncoding = $prevEnc }
+    }
+    else {
+        if (Test-Change "customGames セクションを作って `"$GameName`" を追加") {
+            # 末尾の空行を落としてから追記し、最後に改行を1つだけ残す
+            $tail = @($ludLines)
+            while ($tail.Count -gt 0 -and $tail[$tail.Count - 1] -match '^\s*$') {
+                $tail = @($tail[0..($tail.Count - 2)])
+            }
+            $ludLines = @($tail) + @('customGames:') + $entry + @('')
+            $dirty = $true
+        }
+    }
+
+    # --- 4b. 書き込み -------------------------------------------------------------
+    # $dirty は Test-Change が $true を返したときにしか立たないので、
+    # -WhatIfOnly / -VerifyOnly でここに入ることはない。
+
+    if ($dirty) {
+        Backup-Once $ludCfg
+        Write-Utf8NoBom $ludCfg (($ludLines -join "`n"))
+        Write-Ok 'config.yaml を更新しました。'
+    }
+    elseif (-not $NoChange) {
+        Write-Info 'config.yaml の変更はありません。'
+    }
+
+    Write-Info "セーブ先: %APPDATA%\$($SaveRelPath -replace '/','\')"
+    Write-Info 'ED4 の設定はレジストリにあるので、ED3 の ED3_CFG.INI のような'
+    Write-Info '「同期から外す」指定は不要です。FrameRate は自動的に端末ごとの値になります。'
+
+    # 実際に検出できるか確認
+    # -VerifyOnly / -WhatIfOnly では実行しない。ludusavi の起動はマニフェスト更新の
+    # ネットワークアクセスと %APPDATA%\ludusavi への書き込みを伴うため。
+    if ($ludusavi -and -not $NoChange) {
+        Write-Host ''
+        Write-Info 'ludusavi でスキャンして検出できるか確認します...'
+        $prevEnc = $null
+        $prevEap = $ErrorActionPreference
+        try {
+            # PowerShell 5.1 はネイティブコマンドの出力をコンソールのコードページ (日本語環境では
+            # CP932) で解釈する。--api の JSON は UTF-8 なので、揃えないとゲーム名が化けて必ず不一致になる。
+            $prevEnc = [Console]::OutputEncoding
+            [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+            # ネイティブコマンドの stderr で終了させない
+            $ErrorActionPreference = 'Continue'
+            $out = & $ludusavi backup --preview --api $GameName 2>&1 | Out-String
+            if ($out -notmatch [regex]::Escape($GameName)) {
+                Write-Warn2 'ludusavi がこのゲームを検出できませんでした。セーブデータが未作成かもしれません。'
+                Write-Info  '一度ゲームを起動してセーブしてから、もう一度試してください。'
+            } else {
+                Write-Ok 'ludusavi が検出しました。'
+            }
+        } catch {
+            Write-Warn2 ("ludusavi の実行に失敗: " + $_.Exception.Message)
+        } finally {
+            $ErrorActionPreference = $prevEap
+            if ($prevEnc) { [Console]::OutputEncoding = $prevEnc }
+        }
     }
 }
 
@@ -836,8 +848,7 @@ Write-Host @"
        スクリーンモード : ウィンドウ    ← ED4 はこちらで起動する。既定では触らない
        Direct3D         : OFF          ← このスクリプトで設定済み
        サーフェイス     : 描画が崩れる場合は「システム」を試す
-       フレームレート   : 進行速度が変わる。0/1/2/3 で描画間引きが
-                          1 / 2 / 4 / 制限なし に対応する
+       フレームレート   : 進行速度が変わる（docs/setup.md 7.2）
   2. $ExeName を直接起動して、$AspectRatio で映ることを確認する
   3. 一度セーブして %APPDATA%\FALCOM\$ExeBase\SaveData ができたことを確認する
   4. Playnite に上記のプレイアクションで登録し、Playnite から起動する

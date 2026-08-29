@@ -9,7 +9,7 @@
 
 何をどう設定するかは [../../docs/setup.md](../../docs/setup.md)、その根拠は
 [../../docs/analysis.md](../../docs/analysis.md)。困ったときは
-[症状別の確認手順](../../docs/setup.md#8-症状別の確認手順)。
+[症状別の確認手順](../../docs/setup.md#6-症状別の確認手順)。
 
 ```powershell
 # 現状が意図どおりか確認するだけ（何も変更しない）
@@ -57,4 +57,4 @@ Playnite の登録内容表示 → 検証。
 
 > ⚠️ `toggledPaths` は**絶対パスで書く必要があり、端末ごとに値が違う**。
 > **もう一方の端末でも必ずこのスクリプトを実行すること**
-> （[docs/setup.md 7.3](../../docs/setup.md#73-ludusavi-の設定)）。
+> （[docs/setup.md 5.3](../../docs/setup.md#53-ludusavi-の設定)）。

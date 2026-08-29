@@ -52,19 +52,17 @@ powershell -ExecutionPolicy Bypass -File .\setup.ps1
 
 ---
 
-## 何を解決するか
+## このスクリプトが解決すること
 
-| 症状 | 原因 |
-|---|---|
-| **ED4 がそもそも起動しない** | 描画ドライバが 16bit カラーのサーフェスしか扱わない。Windows 8 以降のデスクトップは 32bit 固定 |
-| 起動時に砂時計のまま固まる（再現性が低い） | Windows 起動直後は DirectSound のデバイス列挙が終わっておらず、初期化がブロックする |
-| UAC の昇格ダイアログが出る | `WINXPSP3` 互換モードが昇格を誘発している。実行ファイル自体はマニフェストを持たない |
-| 640×480 のフルスクリーンを強制され、扱いにくい | ゲームの描画が 640x480 固定 |
-| 画面が横に伸びる | 経路が2つある。① DPI スケーリング ② 排他フルスクリーンで GPU 側が拡大している |
-| ウィンドウにしたのにフルスクリーンのまま | 指定したウィンドウが枠込みで作業領域に収まらず、cnc-ddraw が画面サイズまで縮めている |
-| 移動が遅い | ゲーム内の描画設定。外部の速度変更ツールは原理的に効かない |
+- **ED4 が Windows 11 で起動するようになる**（ED4）
+  16bit カラーのサーフェスしか扱わない描画ドライバに合わせて、互換性レイヤーを設定する。
+- **640×480 のフルスクリーン固定から解放される**（ED3 / ED4）
+  cnc-ddraw を導入し、4:3 を保ったウィンドウ表示とフルスクリーン表示を切り替えられるようにする。
+- **セーブデータを端末間で共有できる**（ED3 / ED4）
+  ludusavi に登録し、Playnite から起動するだけで復元とバックアップが回るようにする。
 
-対策と根拠は [docs/setup.md](docs/setup.md) と [docs/analysis.md](docs/analysis.md)。
+設定した値とその根拠は [docs/setup.md](docs/setup.md)、
+その元になった実行ファイルの解析結果は [docs/analysis.md](docs/analysis.md)。
 
 ---
 
@@ -81,7 +79,7 @@ powershell -ExecutionPolicy Bypass -File .\setup.ps1
 
 **事実は `docs/` にだけ書く。** この README と各 README はリンクに徹する。
 
-- 動かない → [docs/setup.md の「症状別の確認手順」](docs/setup.md#8-症状別の確認手順)
+- 動かない → [docs/setup.md の「症状別の確認手順」](docs/setup.md#6-症状別の確認手順)
 - なぜこの設定なのか → [docs/setup.md](docs/setup.md) → 根拠のリンク先（analysis）
 - スクリプトをいじりたい → [docs/conventions.md](docs/conventions.md)
 

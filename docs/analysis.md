@@ -16,7 +16,6 @@
 | リンカ | MSVC 6.0 | MSVC 6.0 |
 | バージョン | Ver 1.14 | 1.0.1.0 |
 | サブシステム | GUI (2) | GUI (2) |
-| ASLR (`DYNAMICBASE`) | **false** | **false** |
 | DEP (`NXCOMPAT`) | **false** | **false** |
 | 埋め込みマニフェスト | **なし** | **なし** |
 | ファイル名のインストーラ検出語 | なし | なし |
@@ -26,7 +25,7 @@
 
 | 事実 | 帰結 |
 |---|---|
-| `NXCOMPAT` = false | **DEP は最初から適用されていない。** DEP の除外登録は効果を持たない |
+| `NXCOMPAT` = false | **DEP は適用されない。** DEP 関連の設定は動作に影響しない |
 | マニフェストが無く、ファイル名にも `setup` / `install` を含まない | **昇格要求は実行ファイル由来ではない。** Windows のインストーラ検出でもない。昇格が起きるなら原因は互換性レイヤー側 |
 | `QueryPerformanceCounter` を import していない | **`QueryPerformanceCounter` / `QueryPerformanceFrequency` の戻り値を細工する時間伸縮ツールは原理的に効かない。** タイミングは `timeGetTime` / `timeSetEvent` 系（`WINMM.dll`） |
 
@@ -64,7 +63,7 @@ Application Data\FALCOM\
 
 ### 設定ファイル `ED3_CFG.INI`
 
-**`%APPDATA%\FALCOM\ED3_XP\SAVEDATA\ED3_CFG.INI`（114 バイト）**
+**`%APPDATA%\FALCOM\ED3_XP\SAVEDATA\ED3_CFG.INI`**
 
 ```ini
 [新・英雄伝説 III 「白き魔女」]
@@ -83,7 +82,7 @@ FRAME=8
 ### `FRAME` = 進行速度
 
 ゲーム内「環境設定 → 画面描画」の値。**移動1歩あたりの補間コマ数。**
-FPS には上限（実測 40 前後）があるため:
+FPS には上限があるため:
 
 ```
 体感速度  ∝  FPS ÷ FRAME
@@ -107,7 +106,7 @@ FPS には上限（実測 40 前後）があるため:
 
 ```
 ED4_XP.EXE      933,888     ← 本体
-ED4_ENV.EXE      61,440     ← 環境設定ツール（別プロセス、2002 年ビルド）
+ED4_ENV.EXE      61,440     ← 環境設定ツール（別プロセス）
 ED4_XP.GDF      327,680
 falcom.inf        3,412
 DLLDV/                      ← 描画・入力・音声のドライバ DLL
@@ -217,8 +216,7 @@ bit1 が 0                 →  自動探索。Full555 を試し、駄目なら 
 
 `3` だけ制御フラグが下りる。**フレームレート制限を外す設定**と読める。
 
-> 逆アセンブルから確定できるのはここまで。`0`〜`3` が体感速度にどう効くかは実測で決める。
-> 間引くほど描画負荷が下がるので、重い環境では `2` (x4) が最も速い。
+> 逆アセンブルから確定できるのはここまで。`0`〜`3` が体感速度にどう効くかは実際に試して決める。
 
 ### セーブデータの保存先
 
@@ -229,24 +227,6 @@ MKDIR  %UserPath%ED4_XP
 MKDIR  %UserPath%ED4_XP\SaveData
 ```
 
-→ **`%APPDATA%\FALCOM\ED4_XP\SaveData`**（1ファイル 14,460 バイト、ファイル名はセーブ枠番号）
+→ **`%APPDATA%\FALCOM\ED4_XP\SaveData`**（ファイル名はセーブ枠番号）
 
 ED3 は `SAVEDATA`、ED4 は `SaveData`。**綴りが違う。**
-
----
-
-## 1.4 解析に使った方法
-
-特別なツールは使っていない。Python で PE ヘッダを直接パースし、逆アセンブルは capstone。
-
-```python
-# セクションテーブルから RVA → ファイルオフセットを解決し、
-# データディレクトリ [1] = インポート、[2] = リソースを辿る
-e_lfanew = struct.unpack_from('<I', data, 0x3C)[0]
-# ... IMAGE_NT_HEADERS → IMAGE_OPTIONAL_HEADER → DataDirectory
-```
-
-- `DllCharacteristics` の `0x0040` = ASLR、`0x0100` = DEP
-- リソースタイプ `24` = マニフェスト、`16` = バージョン情報、`5` = ダイアログ
-- ダイアログリソースの文字列は UTF-16LE。日本語が入るので ASCII 抽出では拾えない
-- レジストリのルートキーは `push 0x80000001` のような即値で読める（`HKEY_CURRENT_USER`）

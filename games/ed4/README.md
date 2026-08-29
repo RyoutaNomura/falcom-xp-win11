@@ -9,7 +9,7 @@
 
 何をどう設定するかは [../../docs/setup.md](../../docs/setup.md)、その根拠は
 [../../docs/analysis.md](../../docs/analysis.md)。困ったときは
-[症状別の確認手順](../../docs/setup.md#8-症状別の確認手順)。
+[症状別の確認手順](../../docs/setup.md#6-症状別の確認手順)。
 
 ```powershell
 # 現状が意図どおりか確認するだけ（何も変更しない）

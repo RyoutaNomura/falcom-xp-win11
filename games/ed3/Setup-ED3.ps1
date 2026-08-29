@@ -254,9 +254,15 @@ if (-not $ludusavi) {
 if ($ludusavi) { Write-Ok "ludusavi: $ludusavi" }
 else           { Write-Warn2 'ludusavi.exe が PATH 上に見つかりません。Playnite の設定で絶対パスが必要になります。' }
 
-$ludCfg = Join-Path $env:APPDATA 'ludusavi\config.yaml'
-if (Test-Path -LiteralPath $ludCfg) { Write-Ok "ludusavi 設定: $ludCfg" }
-else { Write-Die "$ludCfg がありません。ludusavi を一度起動して設定を作ってください。" }
+# config.yaml が無ければセーブ同期の手順だけを飛ばす。表示まわりの設定は最後まで行う。
+$ludCfg      = Join-Path $env:APPDATA 'ludusavi\config.yaml'
+$useLudusavi = Test-Path -LiteralPath $ludCfg
+if ($useLudusavi) {
+    Write-Ok "ludusavi 設定: $ludCfg"
+} else {
+    Write-Warn2 "$ludCfg がありません。セーブ同期の設定は飛ばします（表示まわりの設定は行います）。"
+    Write-Info  'セーブ同期を使うなら ludusavi を一度起動して設定を作り、もう一度実行してください。'
+}
 
 # Playnite
 if (Test-Path -LiteralPath (Join-Path $env:APPDATA 'Playnite\config.json')) { Write-Ok 'Playnite: 検出' }
@@ -265,15 +271,17 @@ else { Write-Warn2 'Playnite が見つかりません。手順5の登録は手�
 # rclone（クラウド同期に必要）
 # ludusavi は未設定でも apps.rclone: ブロックを書き出すので、"rclone" という
 # 文字列の有無では判定できない。apps.rclone.path の中身を見る。
-$cfgLines   = (Get-Content -LiteralPath $ludCfg -Raw -Encoding UTF8) -split "`r?`n"
-$rcloneIdx  = Find-LineUnder $cfgLines (Find-TopLevel $cfgLines '^apps:\s*$') '^\s+rclone:\s*$'
-$rclonePath = ''
-$rpIdx      = Find-LineUnder $cfgLines $rcloneIdx '^\s+path:\s*'
-if ($rpIdx -ge 0) { $rclonePath = (($cfgLines[$rpIdx] -split ':', 2)[1]).Trim().Trim('"', "'") }
-if ($rclonePath) {
-    Write-Ok "rclone: $rclonePath"
-} else {
-    Write-Warn2 'ludusavi に rclone が設定されていません（apps.rclone.path が空）。クラウド同期は動きません。'
+if ($useLudusavi) {
+    $cfgLines   = (Get-Content -LiteralPath $ludCfg -Raw -Encoding UTF8) -split "`r?`n"
+    $rcloneIdx  = Find-LineUnder $cfgLines (Find-TopLevel $cfgLines '^apps:\s*$') '^\s+rclone:\s*$'
+    $rclonePath = ''
+    $rpIdx      = Find-LineUnder $cfgLines $rcloneIdx '^\s+path:\s*'
+    if ($rpIdx -ge 0) { $rclonePath = (($cfgLines[$rpIdx] -split ':', 2)[1]).Trim().Trim('"', "'") }
+    if ($rclonePath) {
+        Write-Ok "rclone: $rclonePath"
+    } else {
+        Write-Warn2 'ludusavi に rclone が設定されていません（apps.rclone.path が空）。クラウド同期は動きません。'
+    }
 }
 
 # ディスプレイスケーリングの注意喚起
@@ -548,146 +556,153 @@ Write-Info 'cnc-ddraw が入っていれば互換モードは不要です。DPI 
 
 Write-Head '4. ludusavi の設定'
 
-$yaml     = Get-Content -LiteralPath $ludCfg -Raw -Encoding UTF8
-$ludLines = $yaml -split "`r?`n"
-$dirty    = $false
-
-# --- 4a. カスタムゲーム -------------------------------------------------------
-
-$entry = @(
-    "  - name: $GameName"
-    '    integration: override'
-    '    files:'
-    "      - `"<winAppData>/$SaveRelPath`""
-    '    registry: []'
-    '    installDir: []'
-    '    winePrefix: []'
-)
-
-# 登録済みかどうかは customGames: の配下にある "- name:" 行だけを見る。
-# 全文の部分一致だと、前方一致する別名（"... 完全版" など）を誤検出し、
-# ludusavi が引用符付きで書き戻したときには逆に毎回重複エントリを足してしまう。
-$cgIdx      = Find-TopLevel $ludLines '^customGames:\s*(\[\]\s*)?$'
-$nameRe     = '^\s*-\s+name:\s*"?' + [regex]::Escape($GameName) + '"?\s*$'
-$registered = ($cgIdx -ge 0) -and ((Find-LineUnder $ludLines $cgIdx $nameRe) -ge 0)
-
-if ($registered) {
-    Write-Ok "カスタムゲーム `"$GameName`" は登録済み"
-}
-elseif ($VerifyOnly) {
-    Write-Warn2 "カスタムゲーム `"$GameName`" が ludusavi に登録されていません。"
-}
-elseif ($cgIdx -ge 0) {
-    if (Test-Change "customGames に `"$GameName`" を追加") {
-        if ($ludLines[$cgIdx] -match '\[\]') { $ludLines[$cgIdx] = 'customGames:' }
-        $ludLines = Add-LinesAfter -Lines $ludLines -Index $cgIdx -Insert $entry
-        $dirty = $true
-    }
+if (-not $useLudusavi) {
+    Write-Info 'config.yaml が無いため、セーブ同期の設定は行いません。'
+    Write-Info 'セーブ同期を使うなら ludusavi を一度起動してから再実行してください。'
 }
 else {
-    if (Test-Change "customGames セクションを作って `"$GameName`" を追加") {
-        # 末尾の空行を落としてから追記し、最後に改行を1つだけ残す
-        $tail = @($ludLines)
-        while ($tail.Count -gt 0 -and $tail[$tail.Count - 1] -match '^\s*$') {
-            $tail = @($tail[0..($tail.Count - 2)])
-        }
-        $ludLines = @($tail) + @('customGames:') + $entry + @('')
-        $dirty = $true
+
+    $yaml     = Get-Content -LiteralPath $ludCfg -Raw -Encoding UTF8
+    $ludLines = $yaml -split "`r?`n"
+    $dirty    = $false
+
+    # --- 4a. カスタムゲーム -------------------------------------------------------
+
+    $entry = @(
+        "  - name: $GameName"
+        '    integration: override'
+        '    files:'
+        "      - `"<winAppData>/$SaveRelPath`""
+        '    registry: []'
+        '    installDir: []'
+        '    winePrefix: []'
+    )
+
+    # 登録済みかどうかは customGames: の配下にある "- name:" 行だけを見る。
+    # 全文の部分一致だと、前方一致する別名（"... 完全版" など）を誤検出し、
+    # ludusavi が引用符付きで書き戻したときには逆に毎回重複エントリを足してしまう。
+    $cgIdx      = Find-TopLevel $ludLines '^customGames:\s*(\[\]\s*)?$'
+    $nameRe     = '^\s*-\s+name:\s*"?' + [regex]::Escape($GameName) + '"?\s*$'
+    $registered = ($cgIdx -ge 0) -and ((Find-LineUnder $ludLines $cgIdx $nameRe) -ge 0)
+
+    if ($registered) {
+        Write-Ok "カスタムゲーム `"$GameName`" は登録済み"
     }
-}
-
-# --- 4b. ED3_CFG.INI を同期から除外 -------------------------------------------
-#
-# ED3_CFG.INI はセーブデータと同じフォルダにあるが、速度設定 (FRAME) を
-# 端末ごとに変えたいので同期対象から外す。
-# toggledPaths だけは <winAppData> が使えず絶対パスで書く必要があるため、
-# 実行時のユーザー名から生成する（＝端末ごとに値が違う）。
-# ⚠️ もう一方の端末でも必ずこのスクリプトを実行すること。
-
-$excludeAbs  = (Join-Path $env:APPDATA (($SaveRelPath -replace '/', '\') + '\' + $ExcludeFile))
-$excludeYaml = $excludeAbs -replace '\\', '/'
-
-# backup: 配下の toggledPaths だけを対象にする。restore: 配下にも同名のキーがあり、
-# まとめて触ると restore 側を空マップから null に変えて config.yaml を壊す。
-$backupIdx = Find-TopLevel $ludLines '^backup:\s*$'
-$tpIdx     = Find-LineUnder $ludLines $backupIdx '^\s+toggledPaths:\s*(\{\}\s*)?$'
-$excluded  = ($tpIdx -ge 0) -and ((Find-LineUnder $ludLines $tpIdx ([regex]::Escape($excludeYaml))) -ge 0)
-
-if ($excluded) {
-    Write-Ok "$ExcludeFile は既に同期対象外"
-}
-elseif ($VerifyOnly) {
-    Write-Warn2 "$ExcludeFile が同期対象から除外されていません（速度設定が端末間で上書きされます）。"
-}
-elseif ($tpIdx -lt 0) {
-    Write-Warn2 'config.yaml の backup: 配下に toggledPaths が見つからず、除外設定を追加できませんでした。'
-    Write-Info  'ludusavi の GUI（バックアップ画面のファイル一覧）でチェックを外してください。'
-}
-else {
-    $ind      = Get-Indent $ludLines[$tpIdx]
-    $gameLine = (' ' * ($ind + 2)) + "${GameName}:"
-    $pathLine = (' ' * ($ind + 4)) + "`"$excludeYaml`": false"
-
-    if (Test-Change "$ExcludeFile を同期対象から除外") {
-        if ($ludLines[$tpIdx] -match '\{\}') {
-            # {} を開く。触るのは backup: 配下のこの1行だけ
-            $ludLines[$tpIdx] = (' ' * $ind) + 'toggledPaths:'
-            $ludLines = Add-LinesAfter -Lines $ludLines -Index $tpIdx -Insert @($gameLine, $pathLine)
+    elseif ($VerifyOnly) {
+        Write-Warn2 "カスタムゲーム `"$GameName`" が ludusavi に登録されていません。"
+    }
+    elseif ($cgIdx -ge 0) {
+        if (Test-Change "customGames に `"$GameName`" を追加") {
+            if ($ludLines[$cgIdx] -match '\[\]') { $ludLines[$cgIdx] = 'customGames:' }
+            $ludLines = Add-LinesAfter -Lines $ludLines -Index $cgIdx -Insert $entry
+            $dirty = $true
         }
-        else {
-            $gIdx = Find-LineUnder $ludLines $tpIdx ('^' + [regex]::Escape($gameLine) + '\s*$')
-            if ($gIdx -ge 0) {
-                $ludLines = Add-LinesAfter -Lines $ludLines -Index $gIdx -Insert @($pathLine)
-            } else {
+    }
+    else {
+        if (Test-Change "customGames セクションを作って `"$GameName`" を追加") {
+            # 末尾の空行を落としてから追記し、最後に改行を1つだけ残す
+            $tail = @($ludLines)
+            while ($tail.Count -gt 0 -and $tail[$tail.Count - 1] -match '^\s*$') {
+                $tail = @($tail[0..($tail.Count - 2)])
+            }
+            $ludLines = @($tail) + @('customGames:') + $entry + @('')
+            $dirty = $true
+        }
+    }
+
+    # --- 4b. ED3_CFG.INI を同期から除外 -------------------------------------------
+    #
+    # ED3_CFG.INI はセーブデータと同じフォルダにあるが、速度設定 (FRAME) を
+    # 端末ごとに変えたいので同期対象から外す。
+    # toggledPaths だけは <winAppData> が使えず絶対パスで書く必要があるため、
+    # 実行時のユーザー名から生成する（＝端末ごとに値が違う）。
+    # ⚠️ もう一方の端末でも必ずこのスクリプトを実行すること。
+
+    $excludeAbs  = (Join-Path $env:APPDATA (($SaveRelPath -replace '/', '\') + '\' + $ExcludeFile))
+    $excludeYaml = $excludeAbs -replace '\\', '/'
+
+    # backup: 配下の toggledPaths だけを対象にする。restore: 配下にも同名のキーがあり、
+    # まとめて触ると restore 側を空マップから null に変えて config.yaml を壊す。
+    $backupIdx = Find-TopLevel $ludLines '^backup:\s*$'
+    $tpIdx     = Find-LineUnder $ludLines $backupIdx '^\s+toggledPaths:\s*(\{\}\s*)?$'
+    $excluded  = ($tpIdx -ge 0) -and ((Find-LineUnder $ludLines $tpIdx ([regex]::Escape($excludeYaml))) -ge 0)
+
+    if ($excluded) {
+        Write-Ok "$ExcludeFile は既に同期対象外"
+    }
+    elseif ($VerifyOnly) {
+        Write-Warn2 "$ExcludeFile が同期対象から除外されていません（速度設定が端末間で上書きされます）。"
+    }
+    elseif ($tpIdx -lt 0) {
+        Write-Warn2 'config.yaml の backup: 配下に toggledPaths が見つからず、除外設定を追加できませんでした。'
+        Write-Info  'ludusavi の GUI（バックアップ画面のファイル一覧）でチェックを外してください。'
+    }
+    else {
+        $ind      = Get-Indent $ludLines[$tpIdx]
+        $gameLine = (' ' * ($ind + 2)) + "${GameName}:"
+        $pathLine = (' ' * ($ind + 4)) + "`"$excludeYaml`": false"
+
+        if (Test-Change "$ExcludeFile を同期対象から除外") {
+            if ($ludLines[$tpIdx] -match '\{\}') {
+                # {} を開く。触るのは backup: 配下のこの1行だけ
+                $ludLines[$tpIdx] = (' ' * $ind) + 'toggledPaths:'
                 $ludLines = Add-LinesAfter -Lines $ludLines -Index $tpIdx -Insert @($gameLine, $pathLine)
             }
+            else {
+                $gIdx = Find-LineUnder $ludLines $tpIdx ('^' + [regex]::Escape($gameLine) + '\s*$')
+                if ($gIdx -ge 0) {
+                    $ludLines = Add-LinesAfter -Lines $ludLines -Index $gIdx -Insert @($pathLine)
+                } else {
+                    $ludLines = Add-LinesAfter -Lines $ludLines -Index $tpIdx -Insert @($gameLine, $pathLine)
+                }
+            }
+            $dirty = $true
         }
-        $dirty = $true
     }
-}
 
-# --- 4c. 書き込み -------------------------------------------------------------
-# $dirty は Test-Change が $true を返したときにしか立たないので、
-# -WhatIfOnly / -VerifyOnly でここに入ることはない。
+    # --- 4c. 書き込み -------------------------------------------------------------
+    # $dirty は Test-Change が $true を返したときにしか立たないので、
+    # -WhatIfOnly / -VerifyOnly でここに入ることはない。
 
-if ($dirty) {
-    Backup-Once $ludCfg
-    Write-Utf8NoBom $ludCfg (($ludLines -join "`n"))
-    Write-Ok 'config.yaml を更新しました。'
-}
-elseif (-not $NoChange) {
-    Write-Info 'config.yaml の変更はありません。'
-}
+    if ($dirty) {
+        Backup-Once $ludCfg
+        Write-Utf8NoBom $ludCfg (($ludLines -join "`n"))
+        Write-Ok 'config.yaml を更新しました。'
+    }
+    elseif (-not $NoChange) {
+        Write-Info 'config.yaml の変更はありません。'
+    }
 
-Write-Info "セーブ先: %APPDATA%\$($SaveRelPath -replace '/','\')"
+    Write-Info "セーブ先: %APPDATA%\$($SaveRelPath -replace '/','\')"
 
-# 実際に検出できるか確認
-# -VerifyOnly / -WhatIfOnly では実行しない。ludusavi の起動はマニフェスト更新の
-# ネットワークアクセスと %APPDATA%\ludusavi への書き込みを伴うため。
-if ($ludusavi -and -not $NoChange) {
-    Write-Host ''
-    Write-Info 'ludusavi でスキャンして検出できるか確認します...'
-    $prevEnc = $null
-    $prevEap = $ErrorActionPreference
-    try {
-        # PowerShell 5.1 はネイティブコマンドの出力をコンソールのコードページ (日本語環境では
-        # CP932) で解釈する。--api の JSON は UTF-8 なので、揃えないとゲーム名が化けて必ず不一致になる。
-        $prevEnc = [Console]::OutputEncoding
-        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-        # ネイティブコマンドの stderr で終了させない
-        $ErrorActionPreference = 'Continue'
-        $out = & $ludusavi backup --preview --api $GameName 2>&1 | Out-String
-        if ($out -notmatch [regex]::Escape($GameName)) {
-            Write-Warn2 'ludusavi がこのゲームを検出できませんでした。セーブデータが未作成かもしれません。'
-            Write-Info  '一度ゲームを起動してセーブしてから、もう一度試してください。'
-        } else {
-            Write-Ok 'ludusavi が検出しました。'
+    # 実際に検出できるか確認
+    # -VerifyOnly / -WhatIfOnly では実行しない。ludusavi の起動はマニフェスト更新の
+    # ネットワークアクセスと %APPDATA%\ludusavi への書き込みを伴うため。
+    if ($ludusavi -and -not $NoChange) {
+        Write-Host ''
+        Write-Info 'ludusavi でスキャンして検出できるか確認します...'
+        $prevEnc = $null
+        $prevEap = $ErrorActionPreference
+        try {
+            # PowerShell 5.1 はネイティブコマンドの出力をコンソールのコードページ (日本語環境では
+            # CP932) で解釈する。--api の JSON は UTF-8 なので、揃えないとゲーム名が化けて必ず不一致になる。
+            $prevEnc = [Console]::OutputEncoding
+            [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+            # ネイティブコマンドの stderr で終了させない
+            $ErrorActionPreference = 'Continue'
+            $out = & $ludusavi backup --preview --api $GameName 2>&1 | Out-String
+            if ($out -notmatch [regex]::Escape($GameName)) {
+                Write-Warn2 'ludusavi がこのゲームを検出できませんでした。セーブデータが未作成かもしれません。'
+                Write-Info  '一度ゲームを起動してセーブしてから、もう一度試してください。'
+            } else {
+                Write-Ok 'ludusavi が検出しました。'
+            }
+        } catch {
+            Write-Warn2 ("ludusavi の実行に失敗: " + $_.Exception.Message)
+        } finally {
+            $ErrorActionPreference = $prevEap
+            if ($prevEnc) { [Console]::OutputEncoding = $prevEnc }
         }
-    } catch {
-        Write-Warn2 ("ludusavi の実行に失敗: " + $_.Exception.Message)
-    } finally {
-        $ErrorActionPreference = $prevEap
-        if ($prevEnc) { [Console]::OutputEncoding = $prevEnc }
     }
 }
 
@@ -784,12 +799,8 @@ Write-Host @"
   次にやること
   ------------
   1. $ExeName を直接起動して、$AspectRatio で映ることを確認する
-  2. ゲーム内「環境設定 → 画面描画」で速度を調整する
-       FRAME=8 (初期値) → 1.0 倍
-       FRAME=4          → 2.0 倍   ← 実用的
-       FRAME=2          → 4.0 倍   (アニメーションはカクつく)
-     この値は $ExcludeFile に保存され、同期対象外にしてあるので
-     端末ごとに違う値にできます。
+  2. 進行速度はゲーム内「環境設定 → 画面描画」の FRAME で変える（docs/setup.md 7.2）。
+     この値は $ExcludeFile に保存され、同期対象外にしてあるので端末ごとに変えられます。
   3. Playnite に上記のプレイアクションで登録し、Playnite から起動する
 
   表示の切り替え
@@ -800,8 +811,6 @@ Write-Host @"
   うまく動かないとき
   ------------------
     docs/setup.md に症状別の切り分け手順がある。
-    起動直後に砂時計で固まるのは DirectSound のデバイス列挙待ち。
-    高速スタートアップと未使用の音声出力を無効化すると出にくくなる。
 
   元に戻すには
   ------------
