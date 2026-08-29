@@ -1,0 +1,49 @@
+# --- ゲーム本体・著作物は絶対にコミットしない ------------------------------
+*.EXE
+*.exe
+*.DAT
+*.dat
+*.GDF
+*.AVI
+*.avi
+*.WAV
+*.wav
+*.POS
+*.MID
+*.mid
+DLLDV/
+LIB/
+WAVEDV/
+MIDI/
+WAVE/
+SAVEDATA/
+SaveData/
+
+# --- cnc-ddraw（スクリプトが実行時に取得する。同梱しない） -----------------
+ddraw.dll
+ddraw.reference.ini
+cnc-ddraw config.exe
+Shaders/
+
+# --- スクリプトの生成物 -----------------------------------------------------
+# games/<id>/ddraw/*.ini.tmpl がテンプレート（コミットする）。
+# 実際の ini はゲームフォルダに生成されるもので、リポジトリには入らない。
+ddraw.ini
+ddraw.window.ini
+ddraw.fullscreen.ini
+Use_Window.cmd
+Use_Fullscreen.cmd
+
+# --- スクリプトが作るバックアップ -------------------------------------------
+*.bak
+
+# --- 個人情報が混ざりうるもの -----------------------------------------------
+# ludusavi の config.yaml には rclone のリモート ID が入る
+config.yaml
+
+# --- OS / エディタ -----------------------------------------------------------
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/
+.idea/
