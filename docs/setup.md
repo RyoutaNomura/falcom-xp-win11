@@ -54,12 +54,13 @@
 | 同上 | `~ 16BITCOLOR HIGHDPIAWARE` | ED4 |
 | `HKCU\SOFTWARE\FALCOM\ED4_XP` の `EnableDirect3D` | `0` | ED4 |
 | `HKCU\SOFTWARE\FALCOM\ED4_XP` の `ScreenMode` | **書き換えない**（`-GameScreenMode` で明示したときだけ） | ED4 |
+| `HKCU\SOFTWARE\FALCOM\ED5_XP` の `Surface` | **書き換えない**（`-GameSurface` で明示したときだけ） | ED5 |
 
 ### ludusavi の `config.yaml`
 
 | 追加する内容 | 対象 |
 |---|---|
-| `customGames` にエントリ1件（セーブフォルダを `<winAppData>` 相対で指定） | 両方 |
+| `customGames` にエントリ1件（セーブフォルダを `<winAppData>` 相対で指定） | 全タイトル |
 | `backup.toggledPaths` に `ED3_CFG.INI` の除外を1行 | ED3 |
 
 `config.yaml` が無ければこの項目は警告を出して飛ばす。表示まわりの設定は最後まで行われる。
@@ -69,6 +70,7 @@
 - **ゲーム本体のファイル**（`*.EXE` / `*.DAT` / `DLLDV\` など）
 - **ED3 のゲーム内設定**（`ED3_CFG.INI`）
 - **ED4 の音量 / `FrameRate` / メッセージウェイト**、および既定では `ScreenMode`
+- **ED5 の音量 / `Frame` / `BGM` / `Flip`**、および既定では `Surface`
 - **Playnite の設定** — 登録に使う引数を表示してクリップボードにコピーするだけ。登録は手動
 
 既存のファイルを書き換える前に `*.bak` を1つ作る（既にあれば上書きしない）。
@@ -84,11 +86,16 @@
 
 配布元: <https://github.com/FunkyFr3sh/cnc-ddraw>（GPL、作者 FunkyFr3sh）
 
-**置き場所は ED3 / ED4 とも「ゲーム直下」。** `DLLDV\` の中ではない。
+**置き場所は ED3 / ED4 / ED5 とも「ゲーム直下」。** `DLLDV\` の中ではない。
 
 > **根拠**: ED4 で `DDRAW.dll` を呼ぶのは `DLLDV\Full565.dll` などだが、DLL 検索順序は
 > 「プロセスの exe があるフォルダ」が最優先で、呼び出し元 DLL の場所は関係ない
 > （[analysis 1.3](analysis.md#13-ed4_xpexe)）。
+> ED3 / ED5 は exe 自身が `DDRAW.dll` を import するので、そもそも迷う余地がない
+> （[analysis 1.4](analysis.md#14-ed5_xpexe)）。
+
+> **ED5 では cnc-ddraw が事実上の必須条件。** ED5 が要求する 8bit (256色) の画面モードは
+> Windows 8 以降のデスクトップに存在しない（[analysis 1.4](analysis.md#画面モード--640x480--8bit-256色-の排他フルスクリーン固定)）。
 
 > `cnc-ddraw config.exe` は使わないほうが無難。保存すると `ddraw.ini` を書き換えるので、
 > スクリプトが生成するプロファイルとの二重管理になる。
@@ -172,8 +179,8 @@ nonexclusive=true
 
 | レイヤー | 判定 | 根拠 |
 |---|---|---|
-| `HIGHDPIAWARE` | ✅ **両方に必要** | スケーリングが 100% 以外のとき、DPI 非対応アプリから見た画面比率がずれる。スケーリングをアプリ側に任せて防ぐ |
-| **`16BITCOLOR`** | ✅ **ED4 に必須** | ED4 の描画ドライバは 16bit (RGB565 / RGB555) サーフェスしか扱わない（[analysis 1.3](analysis.md#dlldv--実行時にロードされるドライバ)）。Windows 8 以降のデスクトップは 32bit 固定なので、簡易カラーモード「16 ビット (65536) カラー」を当てないと**起動しない**。ED3 は自身が `DDRAW.dll` を import しており不要 |
+| `HIGHDPIAWARE` | ✅ **全タイトルに必要** | スケーリングが 100% 以外のとき、DPI 非対応アプリから見た画面比率がずれる。スケーリングをアプリ側に任せて防ぐ |
+| **`16BITCOLOR`** | ✅ **ED4 に必須 / ED3・ED5 には当てない** | ED4 の描画ドライバは 16bit (RGB565 / RGB555) サーフェスしか扱わない（[analysis 1.3](analysis.md#dlldv--実行時にロードされるドライバ)）。Windows 8 以降のデスクトップは 32bit 固定なので、簡易カラーモード「16 ビット (65536) カラー」を当てないと**起動しない**。ED3 / ED5 は自身が `DDRAW.dll` を import しており不要。**ED5 が要求するのはそもそも 8bit** で、16bit のシムは的外れ（[analysis 1.4](analysis.md#14-ed5_xpexe)） |
 | **`WINXPSP3`** | ❌ **入れない** | 下記 |
 | `RUNASINVOKER` | ❌ 不要 | `WINXPSP3` が誘発する昇格を打ち消せない |
 | `DWM8And16BitMitigation` / `640X480` | ❌ 不要 | — |
@@ -240,6 +247,24 @@ cnc-ddraw の一般的な案内は「ゲーム側をフルスクリーンにす�
 
 スクリプトは触らない。ゲーム内「環境設定」から設定する。
 
+### 4.3 ED5 — レジストリ `HKCU\SOFTWARE\FALCOM\ED5_XP`
+
+**既定では何も書き込まない。** ED4 で必要だった設定が ED5 には存在しないため。
+
+| 値 | 設定値 | 根拠 |
+|---|---|---|
+| `ScreenMode` | **存在しない** | 画面モードは exe 側で排他フルスクリーン固定。`ED5_CFG.EXE` にも項目が無い |
+| `EnableDirect3D` | **存在しない** | Direct3D を使う経路が無い |
+| **`Surface`** | **書き換えない**（`-GameSurface` で明示したときだけ） | 描画が崩れるときに `main`（メインメモリ）を試すための逃げ道 |
+
+値の一覧は [analysis 1.4](analysis.md#設定の保存先はレジストリ-1)。
+設定は `ED5_CFG.EXE`（環境設定）から変更する。
+
+> **ゲーム側にウィンドウモードは無い。** ED4 の `ScreenMode` に当たる設定が無く、
+> `ED5_XP.EXE` は常に `DDSCL_EXCLUSIVE | DDSCL_FULLSCREEN` を取りにいく
+> （[analysis 1.4](analysis.md#画面モード--640x480--8bit-256色-の排他フルスクリーン固定)）。
+> **ウィンドウ表示は cnc-ddraw 側（`nonexclusive=true` + `windowed=true`）だけで作る。**
+
 ---
 
 ## 5. セーブデータ同期
@@ -270,6 +295,7 @@ Playnite から起動
 ```
 wrap --name "英雄伝説III 白き魔女" --gui --cloud-sync --ask-downgrade --force-restore --force-backup -- "C:\FALCOM\ED3_XP\ED3_WIN.EXE"
 wrap --name "英雄伝説IV 朱紅い雫"   --gui --cloud-sync --ask-downgrade --force-restore --force-backup -- "C:\FALCOM\ED4_XP\ED4_XP.EXE"
+wrap --name "英雄伝説V 海の檻歌"    --gui --cloud-sync --ask-downgrade --force-restore --force-backup -- "C:\FALCOM\ED5_XP\ED5_XP.EXE"
 ```
 
 | オプション | 効果 |
@@ -346,6 +372,14 @@ customGames:
     installDir: []
     winePrefix: []
 
+  - name: 英雄伝説V 海の檻歌
+    integration: override
+    files:
+      - "<winAppData>/FALCOM/ED5_XP"
+    registry: []
+    installDir: []
+    winePrefix: []
+
 # ED3 のみ。速度設定 FRAME を端末ごとに変えるための除外
 backup:
   toggledPaths:
@@ -355,8 +389,9 @@ backup:
 
 - `<winAppData>` は `%APPDATA%` に展開されるプレースホルダ。**絶対パスを書かないこと。**
   ユーザー名やドライブ構成が違う端末でも、この設定がそのまま通る
-- **セーブフォルダ名は ED3 が `SAVEDATA`、ED4 が `SaveData`**（[analysis 1.3](analysis.md#セーブデータの保存先)）
-- `registry: []` なので**ゲーム設定は同期されない。** ED4 の画面モードや音量が
+- **セーブフォルダ名は ED3 が `SAVEDATA`、ED4 が `SaveData`**（[analysis 1.3](analysis.md#セーブデータの保存先)）。
+  **ED5 はサブフォルダを作らず `ED5_XP` の直下に置く**（[analysis 1.4](analysis.md#セーブデータの保存先-1)）
+- `registry: []` なので**ゲーム設定は同期されない。** ED4 / ED5 の画面設定や音量が
   端末ごとに独立するのはこのため（意図的）
 - **ED3 の除外が要る理由**: `ED3_CFG.INI` は速度設定を含み、**セーブデータと同じフォルダにある**
   （[analysis 1.2](analysis.md#設定ファイル-ed3_cfgini)）
@@ -432,6 +467,8 @@ backup:
 
 | 症状 | 上から順に確認する | 詳細 |
 |---|---|---|
+| **ED5 が起動しない / 一瞬で落ちる** | ① `ddraw.dll` がゲーム直下にあるか（**無いと 8bit モードが取れない**） ② 互換性レイヤーが `~ HIGHDPIAWARE` か（**`16BITCOLOR` は入れない**） ③ `ED5_CFG.EXE` で VRAM=**メイン**（`-GameSurface main`）を試す ④ `-Renderer gdi` を試す ⑤ BGM を「なし」にして音まわりを切り分ける | [1](#1-cnc-ddraw-を置く) / [4.3](#43-ed5--レジストリ-hkcusoftwarefalcomed5_xp) |
+| **ED5 で「DirectDraw Init FAILED」が出る** | `ddraw.dll` が読まれていない。ゲーム直下にあるか、別フォルダの `ddraw.ini` を見ていないか | [1](#1-cnc-ddraw-を置く) |
 | **ED4 が起動しない** | ① 互換性レイヤーが `~ 16BITCOLOR HIGHDPIAWARE` か ② `ED4_ENV.EXE` で スクリーンモード=**ウィンドウ**、Direct3D=OFF ③ `ddraw.dll` をリネームして素で起動するか ④ サーフェイス=システム、2D/3D アクセラレーション OFF ⑤ ムービー再生 OFF ⑥ `PixelFormat` を明示（`2`=555 / `3`=565 / `0`=自動） | [3](#3-互換性レイヤー) / [4.1](#41-ed4--レジストリ-hkcusoftwarefalcomed4_xp) |
 | **起動時に砂時計のまま固まる** | しばらく待つ / 高速スタートアップを無効化 / 未使用の HDMI・DP 音声出力を無効化 | [7.1](#71-起動直後に砂時計のまま固まる) |
 | **UAC が出る / `os error 740`** | 互換性レイヤーから `WINXPSP3` を外す。**HKLM 側も見る**（HKCU より優先） | [3.1](#31-winxpsp3-を入れてはいけない理由) |
@@ -440,7 +477,7 @@ backup:
 | **フォーカスを外すと BGM が止まる** | `ddraw.ini` の `noactivateapp=true` | [2.4](#24-noactivateapptrue) |
 | **マウスがウィンドウに捕まる** | `ddraw.ini` の `adjmouse` / `devmode` が `false` か。それでも掴まれるならゲーム側（`DINPUT`） | [2.3](#23-マウス) |
 | **描画が崩れる / 色がおかしい** | `-Renderer gdi` を試す（auto → opengl → direct3d9 → gdi）。ED4 は `ED4_ENV.EXE` でサーフェイス=システム、アクセラレーション OFF、ムービー OFF | [2](#2-ddrawini-の値の理由) |
-| **進行が速すぎる / 遅すぎる** | ED3 は `FRAME`、ED4 は「フレームレート」。外部ツールは要らない | [7.2](#72-進行速度) |
+| **進行が速すぎる / 遅すぎる** | ED3 は `FRAME`、ED4 は「フレームレート」、ED5 は「描画精度」。外部ツールは要らない | [7.2](#72-進行速度) |
 | **端末切り替えのたびに競合ダイアログ** | 仕様。**必ず「ダウンロード」**を選ぶ。迷ったら「無視」 | [5.2](#52-確認ダイアログの2系統) |
 | **Playnite からの起動が遅い** | rclone のクラウド API 往復。`--fast-list` を外す / `zip` 形式 / 世代を減らす | [5.3](#同期速度の調整任意) |
 | **セーブが復元されない / 古いデータが戻る** | exe を直接起動していないか / 競合ダイアログで「ダウンロード」を選んだか / Playnite 拡張を併用していないか | [5.4](#54-playnite-拡張ludusavi-for-playniteは使わない) |
@@ -478,14 +515,15 @@ Windows を起動した直後に、砂時計カーソルのままウィンドウ
 |---|---|---|
 | **ED3** | ゲーム内「環境設定 → 画面描画」→ `ED3_CFG.INI` の `FRAME` | `8`（初期値）→ **`4`** で 2 倍 |
 | **ED4** | `ED4_ENV.EXE` の「フレームレート」→ レジストリの `FrameRate` | `x1` / `x2` / `x4` / `Fix` |
+| **ED5** | `ED5_CFG.EXE` の「描画精度」→ レジストリの `Frame` | `標準` / `少し粗い` / `粗い` |
 
 値と内部の間引き係数の対応は [analysis 1.2](analysis.md#frame--進行速度) /
-[1.3](analysis.md#framerate-の分岐0x004a17ae-付近)。
+[1.3](analysis.md#framerate-の分岐0x004a17ae-付近) / [1.4](analysis.md#設定の保存先はレジストリ-1)。
 
 端末ごとに違う値にしたい場合:
 
 - **ED3** — `ED3_CFG.INI` がセーブと同じフォルダにあるので、同期から除外する必要がある（[5.3](#53-ludusavi-の設定)）
-- **ED4** — 設定がレジストリなので**何もしなくてよい**。自動的に端末ごとの値になる
+- **ED4 / ED5** — 設定がレジストリなので**何もしなくてよい**。自動的に端末ごとの値になる
 
 ---
 

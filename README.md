@@ -7,6 +7,7 @@
 |---|---|---|
 | 英雄伝説III「白き魔女」 | `ED3_WIN.EXE` | [`games/ed3/`](games/ed3/) |
 | 英雄伝説IV「朱紅い雫」 | `ED4_XP.EXE` | [`games/ed4/`](games/ed4/) |
+| 英雄伝説V「海の檻歌」 | `ED5_XP.EXE` | [`games/ed5/`](games/ed5/) |
 
 **常駐プロセスなし。管理者権限なし。互換モードなし。ランチャーなし。**
 DLL インジェクションもしないので、ゲーム本体のファイルには一切触れない。
@@ -38,7 +39,7 @@ powershell -ExecutionPolicy Bypass -File .\setup.ps1
 
 ### 前提
 
-- ゲームがインストール済み（既定は `C:\FALCOM\ED3_XP` / `C:\FALCOM\ED4_XP`）
+- ゲームがインストール済み（既定は `C:\FALCOM\ED3_XP` / `C:\FALCOM\ED4_XP` / `C:\FALCOM\ED5_XP`）
 - [ludusavi](https://github.com/mtkennerly/ludusavi) と [rclone](https://rclone.org/) が導入済みで、
   rclone のリモートが設定済み（セーブ同期を使う場合）
 - [Playnite](https://playnite.link/) が導入済み（使う場合）
@@ -56,9 +57,11 @@ powershell -ExecutionPolicy Bypass -File .\setup.ps1
 
 - **ED4 が Windows 11 で起動するようになる**（ED4）
   16bit カラーのサーフェスしか扱わない描画ドライバに合わせて、互換性レイヤーを設定する。
-- **640×480 のフルスクリーン固定から解放される**（ED3 / ED4）
+- **ED5 が Windows 11 で起動するようになる**（ED5）
+  ED5 が要求する 8bit (256色) の画面モードは今の Windows に存在しない。cnc-ddraw が受ける。
+- **640×480 のフルスクリーン固定から解放される**（ED3 / ED4 / ED5）
   cnc-ddraw を導入し、4:3 を保ったウィンドウ表示とフルスクリーン表示を切り替えられるようにする。
-- **セーブデータを端末間で共有できる**（ED3 / ED4）
+- **セーブデータを端末間で共有できる**（ED3 / ED4 / ED5）
   ludusavi に登録し、Playnite から起動するだけで復元とバックアップが回るようにする。
 
 設定した値とその根拠は [docs/setup.md](docs/setup.md)、
@@ -75,7 +78,7 @@ powershell -ExecutionPolicy Bypass -File .\setup.ps1
 | [docs/analysis.md](docs/analysis.md) | **実行ファイルの解析結果（事実）。** PE ヘッダ・インポート・リソース・逆アセンブルから読んだ仕様 |
 | [docs/setup.md](docs/setup.md) | **必要な作業・設定。** 各項目に analysis のどの事実が根拠かを付けてある。セーブ同期と症状別の確認手順もここ |
 | [docs/conventions.md](docs/conventions.md) | スクリプトを触るときの規約（文字コード・設計原則・公開前チェック） |
-| [games/ed3/README.md](games/ed3/README.md) / [games/ed4/README.md](games/ed4/README.md) | 各スクリプトのパラメータ一覧 |
+| [games/ed3/README.md](games/ed3/README.md) / [games/ed4/README.md](games/ed4/README.md) / [games/ed5/README.md](games/ed5/README.md) | 各スクリプトのパラメータ一覧 |
 
 **事実は `docs/` にだけ書く。** この README と各 README はリンクに徹する。
 

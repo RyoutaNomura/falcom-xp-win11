@@ -1,0 +1,55 @@
+; ============================================================
+;  cnc-ddraw - @@TITLE@@ / WINDOW
+;
+;  既定値から変える必要があるキーだけを書いている。
+;  それ以外は cnc-ddraw の既定のまま。全設定は ddraw.reference.ini
+;  を参照すること。
+;
+;  このファイルはテンプレート。@@...@@ を Setup-@@GAMEID@@.ps1 が
+;  置換して ddraw.window.ini を生成する。
+;  生成物を直接編集しても次回実行時に上書きされる
+;  （-KeepExistingProfiles で抑止できる）。
+;
+;  各キーの意味は docs/setup.md を参照。
+; ============================================================
+[ddraw]
+
+; --- ウィンドウ (既定: windowed=false) ------------------------
+; width/height は「枠と表題バーを足しても作業領域に収まる」値で
+; なければならない。収まらないと cnc-ddraw が画面サイズまで縮め、
+; 「ウィンドウにしたのにフルスクリーンのまま」に見える。
+; Setup スクリプトが実測して自動で縮める (-NoAutoFit で無効化)。
+windowed=true
+fullscreen=false
+border=@@BORDER@@
+resizable=@@RESIZABLE@@
+width=@@WIDTH@@
+height=@@HEIGHT@@
+; -32000 = 画面中央
+posX=-32000
+posY=-32000
+
+; --- アスペクト比 (既定: maintas=false) -----------------------
+; @@EXENAME@@ の描画は @@NATIVERES@@。
+maintas=true
+@@ASPECTLINE@@
+; boxing=true にすると整数倍スケーリングのみになる。
+boxing=false
+
+; --- 排他フルスクリーンの禁止 (既定: nonexclusive=true) -------
+nonexclusive=true
+
+; --- マウス (既定: adjmouse=true) -----------------------------
+adjmouse=false
+devmode=false
+
+; --- alt+tab ---------------------------------------------------
+noactivateapp=true
+
+; --- レンダラ (既定: auto) ------------------------------------
+; ウィンドウモードだけ起動しない場合はここを gdi 固定にすると
+; 通ることがある。
+@@RENDERERLINE@@
+
+; --- この ini を正本にする (既定: savesettings=1) -------------
+savesettings=0
