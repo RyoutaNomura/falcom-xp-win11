@@ -1,0 +1,65 @@
+; ============================================================
+;  cnc-ddraw - @@TITLE@@ / FULLSCREEN
+;
+;  既定値から変える必要があるキーだけを書いている。
+;  それ以外は cnc-ddraw の既定のまま。全設定は ddraw.reference.ini
+;  を参照すること。
+;
+;  このファイルはテンプレート。@@...@@ を Setup-@@GAMEID@@.ps1 が
+;  置換して ddraw.fullscreen.ini を生成する。
+;  生成物を直接編集しても次回実行時に上書きされる
+;  （-KeepExistingProfiles で抑止できる）。
+;
+;  各キーの意味は docs/setup.md を参照。
+; ============================================================
+[ddraw]
+
+; --- ウィンドウ (既定: windowed=false) ------------------------
+windowed=true
+fullscreen=true
+border=false
+resizable=false
+width=0
+height=0
+; -32000 = 画面中央
+posX=-32000
+posY=-32000
+
+; --- アスペクト比 (既定: maintas=false) -----------------------
+; @@EXENAME@@ の描画は @@NATIVERES@@。
+; maintas だけだと環境によってはフルスクリーンで 16:9 いっぱいに
+; 引き伸ばされることがあるため、aspect_ratio で比率を直接指定する。
+maintas=true
+@@ASPECTLINE@@
+; boxing=true にすると整数倍スケーリングのみになる
+; (1080p なら 1280x960)。ドットは完全に揃うが表示は小さくなる。
+boxing=false
+
+; --- 排他フルスクリーンの禁止 (既定: nonexclusive=true) -------
+; ゲームに画面モードそのものを 640x480 へ切り替えさせると、
+; 拡大するのは cnc-ddraw ではなく GPU / モニタ側になり、
+; maintas も aspect_ratio も無視されて横に伸びる。明示しておく。
+nonexclusive=true
+
+; --- マウス (既定: adjmouse=true) -----------------------------
+; キーボード / ジョイパッド操作のゲームなので、cnc-ddraw に
+; カーソルを触らせない。
+adjmouse=false
+; devmode=true にするとカーソルがウィンドウ内にロックされる。
+devmode=false
+
+; --- alt+tab ---------------------------------------------------
+; WM_ACTIVATEAPP / WM_NCACTIVATE をゲームから隠す。
+; これが無いとフォーカスを外したとき音が止まり、戻しても
+; 復帰しないことがある。
+noactivateapp=true
+
+; --- レンダラ (既定: auto) ------------------------------------
+; auto = direct3d9 → opengl を試して、駄目なら gdi。
+; ウィンドウモードだけ起動しない場合はここを gdi 固定にすると
+; 通ることがある。
+@@RENDERERLINE@@
+
+; --- この ini を正本にする (既定: savesettings=1) -------------
+; 0 = 終了時に書き戻さない。
+savesettings=0

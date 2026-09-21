@@ -25,7 +25,7 @@
 [CmdletBinding()]
 param(
     # 対象。省略すると対話で選ぶ
-    [ValidateSet('', 'ed3', 'ed4', 'all')]
+    [ValidateSet('', 'ed3', 'ed4', 'ed5', 'all')]
     [string] $Game = '',
 
     # インストール先の上書き（単一タイトルを指定したときだけ有効）
@@ -55,6 +55,13 @@ $Catalog = @(
         Script   = 'games\ed4\Setup-ED4.ps1'
         ExeName  = 'ED4_XP.EXE'
         Defaults = @('C:\FALCOM\ED4_XP')
+    }
+    [pscustomobject]@{
+        Id       = 'ed5'
+        Title    = '英雄伝説V 海の檻歌'
+        Script   = 'games\ed5\Setup-ED5.ps1'
+        ExeName  = 'ED5_XP.EXE'
+        Defaults = @('C:\FALCOM\ED5_XP')
     }
 )
 
