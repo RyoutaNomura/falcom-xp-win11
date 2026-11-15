@@ -83,6 +83,7 @@ powershell -ExecutionPolicy Bypass -File .\setup.ps1
 **事実は `docs/` にだけ書く。** この README と各 README はリンクに徹する。
 
 - 動かない → [docs/setup.md の「症状別の確認手順」](docs/setup.md#6-症状別の確認手順)
+- ハンドヘルド（ROG Xbox Ally）でパッドが効かない → [docs/setup.md 7.3](docs/setup.md#73-ゲームパッド--rog-xbox-ally-などのハンドヘルド)
 - なぜこの設定なのか → [docs/setup.md](docs/setup.md) → 根拠のリンク先（analysis）
 - スクリプトをいじりたい → [docs/conventions.md](docs/conventions.md)
 
