@@ -343,6 +343,28 @@ SendDlgItemMessage(id2, BM_SETCHECK, (value == 0))
 > `Frame`（描画精度）が ED3 の `FRAME` に当たる速度・品質の調整だが、
 > `0`〜`2` が体感速度にどう効くかは実際に試して決める。
 
+### 入力 — exe 自身が DirectInput と WinMM を直接呼ぶ
+
+ED4 のように `DLLDV\DXIDev` のような入力ドライバ DLL を持たない。インポートにあるとおり、
+`ED5_XP.EXE` 自身が次を import している。
+
+```
+DINPUT.dll    DirectInputCreateA     ← DirectInput 8 以前の旧 API（dinput8.dll ではない）
+WINMM.dll     joyGetPosEx            ← Windows 3.1 時代からのジョイスティック API
+```
+
+対応する設定は `HKCU\SOFTWARE\FALCOM\ED5_XP` の `Joystick`（ジョイスティック ON/OFF）と
+`DirectInput`（DirectInput ON/OFF）の 2 つ（[上の表](#設定の保存先はレジストリ-1)）。
+
+| 事実 | 帰結 |
+|---|---|
+| 入力 API を呼ぶのは exe 自身 | ED4 の `DXIDev` と違い、入力の実装を差し替える余地が無い |
+| `DirectInputCreateA` と `joyGetPosEx` の両方を持つ | `DirectInput` の設定で経路を切り替えていると見られるが、**どの設定でどちらを使うかは未確認** |
+| どちらも XInput 以前の API | **XInput でしか中身を出さないコントローラーからは入力が取れない。** ハンドヘルド端末で起きる（[setup.md 7.3](setup.md#73-ゲームパッド--rog-xbox-ally-などのハンドヘルド)） |
+
+ED4 の入力は `DLLDV\DXIDev`（[1.3](#dlldv--実行時にロードされるドライバ)）が担うため、
+同じ端末で **ED4 のパッドは効くのに ED5 だけ効かない** という差が出る。
+
 ### セーブデータの保存先
 
 埋め込み文字列 `\Application Data\FALCOM\` と `ED5_XP\ED5SD000.DAT`、

@@ -478,6 +478,7 @@ backup:
 | **マウスがウィンドウに捕まる** | `ddraw.ini` の `adjmouse` / `devmode` が `false` か。それでも掴まれるならゲーム側（`DINPUT`） | [2.3](#23-マウス) |
 | **描画が崩れる / 色がおかしい** | `-Renderer gdi` を試す（auto → opengl → direct3d9 → gdi）。ED4 は `ED4_ENV.EXE` でサーフェイス=システム、アクセラレーション OFF、ムービー OFF | [2](#2-ddrawini-の値の理由) |
 | **進行が速すぎる / 遅すぎる** | ED3 は `FRAME`、ED4 は「フレームレート」、ED5 は「描画精度」。外部ツールは要らない | [7.2](#72-進行速度) |
+| **ゲームパッドが効かない（ED5 だけ。ED4 は効く）** | ハンドヘルド端末（ROG Xbox Ally など）なら Armoury Crate のライブラリに `ED5_XP.EXE` を登録し、ゲームプロファイルで操作モードをゲームパッドに固定する。ゲーム側（`ED5_CFG.EXE`）や `ddraw.ini` では直らない | [7.3](#73-ゲームパッド--rog-xbox-ally-などのハンドヘルド) |
 | **端末切り替えのたびに競合ダイアログ** | 仕様。**必ず「ダウンロード」**を選ぶ。迷ったら「無視」 | [5.2](#52-確認ダイアログの2系統) |
 | **Playnite からの起動が遅い** | rclone のクラウド API 往復。`--fast-list` を外す / `zip` 形式 / 世代を減らす | [5.3](#同期速度の調整任意) |
 | **セーブが復元されない / 古いデータが戻る** | exe を直接起動していないか / 競合ダイアログで「ダウンロード」を選んだか / Playnite 拡張を併用していないか | [5.4](#54-playnite-拡張ludusavi-for-playniteは使わない) |
@@ -525,6 +526,78 @@ Windows を起動した直後に、砂時計カーソルのままウィンドウ
 - **ED3** — `ED3_CFG.INI` がセーブと同じフォルダにあるので、同期から除外する必要がある（[5.3](#53-ludusavi-の設定)）
 - **ED4 / ED5** — 設定がレジストリなので**何もしなくてよい**。自動的に端末ごとの値になる
 
+### 7.3 ゲームパッド — ROG Xbox Ally などのハンドヘルド
+
+**症状**: ED5 でゲームパッドが全く効かない。同じ端末の ED4 では効く。キーボードは効く。
+`joy.cpl` には **「ROG Xbox Ally Device Gamepad」が 2 台**同名で並び、どちらもプロパティの
+「テスト」タブに軸やボタンが表示されない（説明文だけ）。
+
+**対処（これで直った）**: **Armoury Crate SE のゲームプロファイルで解決する。**
+
+1. Armoury Crate SE のライブラリに **`ED5_XP.EXE` 本体**を手動で追加する
+   （Playnite や `ludusavi.exe` ではなく、ゲームの exe を登録する）
+2. その **ゲームプロファイル**で操作モードを**ゲームパッド**に固定する
+3. ゲームを再起動する
+
+Armoury Crate は**前面にいるプロセス**でプロファイルを切り替えるので、
+Playnite → `ludusavi wrap` → `ED5_XP.EXE` という起動経路のままで効く。
+Playnite / ludusavi / スクリプトの設定は何も変えなくてよい。
+
+#### なぜ ED4 は効いて ED5 は効かないのか
+
+| | 入力の実装 | 根拠 |
+|---|---|---|
+| **ED4** | `DLLDV\DXIDev`（入力ドライバ DLL） | [analysis 1.3](analysis.md#dlldv--実行時にロードされるドライバ) |
+| **ED5** | **exe 自身**が `DirectInputCreateA`（旧 DirectInput）と `joyGetPosEx`（WinMM）を直接呼ぶ | [analysis 1.4](analysis.md#入力--exe-自身が-directinput-と-winmm-を直接呼ぶ) |
+
+Ally 系の内蔵パッドは XInput が本来の経路で、旧 DirectInput / WinMM からは中身がほとんど見えない。
+`joy.cpl` の「テスト」タブが空なのはその現れで、ED5 が使う API からも同じく何も取れない。
+ED4 は `DXIDev` が別の経路を持つため影響を受けない。
+**`ED5_CFG.EXE` の「ジョイスティック」「DirectInput」を切り替えても直らず、`ddraw.ini` も無関係。**
+
+> `joy.cpl` に同名デバイスが複数出るのは Xbox Ally 系の既知の挙動で、ゲームパッド本体と
+> Armoury Crate 用の制御インターフェースが別の HID として見えている。故障ではない。
+
+#### ROG Xbox Ally での推奨設定
+
+| 項目 | 推奨 | 理由 |
+|---|---|---|
+| **Armoury Crate のライブラリ** | ED3 / ED4 / ED5 の **exe 本体**を全部登録する | プロファイルが確実に当たる。ED4 は現状効いているが、登録しておけば操作モードの自動切替で迷わない |
+| **操作モード** | ゲームプロファイルで**ゲームパッドに固定** | 「自動」だと未登録アプリの上でデスクトップモード（スティック＝マウス）に落ちることがある |
+| **互換性レイヤー** | `~ HIGHDPIAWARE` のまま。**`WINXPSP3` と「管理者として実行」は足さない** | 昇格すると `ludusavi wrap` が `os error 740` で起動できない（[3.1](#31-winxpsp3-を入れてはいけない理由)）。入力対策に昇格は不要 |
+| **表示モード** | `-Mode fullscreen`（既定） | 7 インチ 1920x1080 ではウィンドウ表示の利点が無い。ウィンドウにするなら作業領域に収まる `-WindowWidth 1280 -WindowHeight 960` 程度 |
+| **DPI スケーリング** | 既定のままでよい | `HIGHDPIAWARE` が入っているので 100% 以外でも比率は崩れない（[2.1](#21-アスペクト比--maintas--aspect_ratio--nonexclusive)） |
+| **外部コントローラー接続時のダイアログ** | 内蔵パッドを**「常に無効」にしない** | 外部パッドを抜いても内蔵パッドが復帰しなくなる事例がある。復帰にはデバイスの削除と再認識が要る |
+| **ED5_CFG.EXE の「ジョイスティック」** | ON のまま | プロファイルで直った後は触る必要が無い |
+
+#### プロファイルで直らないときの代替
+
+上から順に。いずれも Playnite / ludusavi の起動経路は変えない。
+
+1. **同じゲームプロファイルのキーマッピング**でスティックと各ボタンをゲームの操作キーに割り当てる。
+   ドライバ層で変換されるので、ゲームが何の API で読んでいるかに関係なく動く。
+   このときは `ED5_CFG.EXE` の「ジョイスティック」を OFF にして、半端なパッド読みが混ざらないようにする。
+2. **antimicrox** をキーボード変換に使い、Playnite の「スクリプト」（起動前 / 終了後）で起動と終了を行う。
+   SDL 経由で XInput を読むので Ally のパッドを拾える。JoyToKey は既定で DirectInput を使うため、
+   この症状では JoyToKey 自身がパッドを見つけられない可能性がある。
+
+   ```powershell
+   # ゲーム起動前（パスは環境に合わせる）
+   Start-Process "C:\Program Files\AntiMicroX\antimicrox.exe" -ArgumentList '--hidden','--profile','C:\FALCOM\ED5_XP\ed5.gamecontroller.amgp'
+   # ゲーム終了後
+   Stop-Process -Name antimicrox -ErrorAction SilentlyContinue
+   ```
+
+3. **Steam Input** は最後の手段。仮想 Xbox 360 パッドは旧 DirectInput からも見えるが、Steam からの
+   起動が前提になり、Playnite + ludusavi の経路とプレイ時間計測が崩れる。
+
+#### 切り分けに使ったもの
+
+- `joy.cpl` — Windows に見えているパッドの台数と、「テスト」タブに軸が出るか
+- `joy.cpl` →「詳細設定」→「優先デバイス」 — WinMM の 1 番ジョイスティックを選ぶ。**今回は効果なし**
+- `dxdiag` →「入力」タブ — 同名デバイスをベンダー ID / 製品 ID と軸・ボタン数で区別できる
+- ED4 が同じ端末で動くか — 動けばパッド・ドライバ・Armoury Crate のモードは正常で、差はゲーム側の実装にある
+
 ---
 
 ## 8. 元に戻す
@@ -551,3 +624,5 @@ ED4 は `ED4_ENV.EXE` でスクリーンモード / Direct3D を好みに戻す�
 - [Game launch wrapping — ludusavi docs](https://github.com/mtkennerly/ludusavi/blob/master/docs/help/game-launch-wrapping.md)
 - [ludusavi CLI reference（`wrap` の全オプション）](https://github.com/mtkennerly/ludusavi/blob/master/docs/cli.md)
 - [What is the intended behavior of Cloud Sync? — ludusavi Discussion #436](https://github.com/mtkennerly/ludusavi/discussions/436)
+- [Xbox ROG Ally X: joy.cpl に複数のゲームパッドが出る — ROG Forum](https://rog-forum.asus.com/t5/handheld-gaming/xbox-rog-ally-x-with-updated-mcu-bios-multiple-gamepad-s/td-p/1148130)（[7.3](#73-ゲームパッド--rog-xbox-ally-などのハンドヘルド) の「同名デバイスが 2 台」の根拠）
+- [外部コントローラー接続時に内蔵パッドを「常に無効」にすると復帰しなくなる事例](https://x.com/EX10x/status/1979534655314612306)

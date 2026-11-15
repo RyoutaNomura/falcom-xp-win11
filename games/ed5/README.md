@@ -10,6 +10,8 @@
 何をどう設定するかは [../../docs/setup.md](../../docs/setup.md)、その根拠は
 [../../docs/analysis.md](../../docs/analysis.md)。困ったときは
 [症状別の確認手順](../../docs/setup.md#6-症状別の確認手順)。
+ROG Xbox Ally などのハンドヘルドで**ゲームパッドだけ効かない**ときは
+[setup.md 7.3](../../docs/setup.md#73-ゲームパッド--rog-xbox-ally-などのハンドヘルド)（Armoury Crate のゲームプロファイルで直る）。
 
 ```powershell
 # 現状が意図どおりか確認するだけ（何も変更しない）
