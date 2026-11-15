@@ -543,20 +543,33 @@ Armoury Crate は**前面にいるプロセス**でプロファイルを切り�
 Playnite → `ludusavi wrap` → `ED5_XP.EXE` という起動経路のままで効く。
 Playnite / ludusavi / スクリプトの設定は何も変えなくてよい。
 
-#### なぜ ED4 は効いて ED5 は効かないのか
+#### なぜ ED3 / ED4 は効いて ED5 だけ効かないのか
 
-| | 入力の実装 | 根拠 |
+| | ジョイスティックの読み方 | 根拠 |
 |---|---|---|
+| **ED3** | exe 自身の DirectInput（`joyGetPosEx` は import しない） | [analysis 1.2](analysis.md#12-ed3_winexe) |
 | **ED4** | `DLLDV\DXIDev`（入力ドライバ DLL） | [analysis 1.3](analysis.md#dlldv--実行時にロードされるドライバ) |
-| **ED5** | **exe 自身**が `DirectInputCreateA`（旧 DirectInput）と `joyGetPosEx`（WinMM）を直接呼ぶ | [analysis 1.4](analysis.md#入力--exe-自身が-directinput-と-winmm-を直接呼ぶ) |
+| **ED5** | **WinMM の `joyGetPosEx` だけ。** DirectInput はキーボード専用 | [analysis 1.4](analysis.md#入力--exe-自身が-directinput-と-winmm-を直接呼ぶ) |
 
-Ally 系の内蔵パッドは XInput が本来の経路で、旧 DirectInput / WinMM からは中身がほとんど見えない。
-`joy.cpl` の「テスト」タブが空なのはその現れで、ED5 が使う API からも同じく何も取れない。
-ED4 は `DXIDev` が別の経路を持つため影響を受けない。
-**`ED5_CFG.EXE` の「ジョイスティック」「DirectInput」を切り替えても直らず、`ddraw.ini` も無関係。**
+ED5 は `joyGetNumDevs()` で得た数だけ ID 0 から順に `joyGetPosEx` を試し、**最初に成功した 1 台**に固定する。
+その装置が軸やボタンを持つかは見ない。Ally では同名の HID が 2 台あり、先に成功した方が
+中身の無いインターフェースだと、以後ずっとそこを読み続けて無反応になる。
+ED3 / ED4 は DirectInput で列挙するため、同じ 2 台構成でも正しい方に辿り着ける。
+
+Armoury Crate のゲームパッドモードは内蔵パッドが HID として何を出すかを切り替えるので、
+プロファイルを当てると WinMM 側から読める装置が先頭に来る、という説明になる。
+
+**ゲーム側の設定では直らない。** `ED5_CFG.EXE` の「DirectInput」はキーボード入力方式の切り替えで
+ジョイスティックとは無関係、「ジョイスティック」は ON でないと読まないだけ。`ddraw.ini` も無関係。
+
+> ED5 は `JOY_RETURNPOV` を要求しないので、**十字キー（POV ハット）は読まない。左スティックで操作する。**
+> ボタンも 1・2 番しか使わない（[analysis 1.4](analysis.md#ポーリング0x42c190)）。
 
 > `joy.cpl` に同名デバイスが複数出るのは Xbox Ally 系の既知の挙動で、ゲームパッド本体と
 > Armoury Crate 用の制御インターフェースが別の HID として見えている。故障ではない。
+
+> 切り分けには `ED5_XP.EXE /LOG` で起動すると出る `ED5TXT.LOG` が使える。`JoyStickNum = n` と
+> `Direct Input OK` が出ていれば、初期化は通っていて読んでいる装置が違う、と判断できる。
 
 #### ROG Xbox Ally での推奨設定
 
@@ -588,7 +601,11 @@ ED4 は `DXIDev` が別の経路を持つため影響を受けない。
    Stop-Process -Name antimicrox -ErrorAction SilentlyContinue
    ```
 
-3. **Steam Input** は最後の手段。仮想 Xbox 360 パッドは旧 DirectInput からも見えるが、Steam からの
+3. **Xidi の `winmm.dll` 形態**（未検証）。XInput のパッドを WinMM のジョイスティックとして見せる既製のシム DLL で、
+   cnc-ddraw と同じくゲーム直下に置くだけ。ED5 は WinMM でしか読まないので、置くなら `dinput.dll` ではなく `winmm.dll`。
+   ED5 は POV を読まないため、十字キーを X/Y 軸に割り当てるマッパー設定（DigitalGamepad 相当）にする。
+   `winmm.dll` の他の関数（`timeSetEvent` / `midiStream*` / `mciSendCommandA` など）を素通しできるかは実機確認が要る。
+4. **Steam Input** は最後の手段。仮想 Xbox 360 パッドは旧 DirectInput からも見えるが、Steam からの
    起動が前提になり、Playnite + ludusavi の経路とプレイ時間計測が崩れる。
 
 #### 切り分けに使ったもの

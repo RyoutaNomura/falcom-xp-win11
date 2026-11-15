@@ -345,25 +345,70 @@ SendDlgItemMessage(id2, BM_SETCHECK, (value == 0))
 
 ### 入力 — exe 自身が DirectInput と WinMM を直接呼ぶ
 
-ED4 のように `DLLDV\DXIDev` のような入力ドライバ DLL を持たない。インポートにあるとおり、
-`ED5_XP.EXE` 自身が次を import している。
+ED4 のような入力ドライバ DLL（`DLLDV\DXIDev`）を持たず、`ED5_XP.EXE` 自身が import している。
 
 ```
-DINPUT.dll    DirectInputCreateA     ← DirectInput 8 以前の旧 API（dinput8.dll ではない）
-WINMM.dll     joyGetPosEx            ← Windows 3.1 時代からのジョイスティック API
+DINPUT.dll    DirectInputCreateA                        ← DirectInput 5 (dwVersion = 0x0500)。dinput8 ではない
+WINMM.dll     joyGetNumDevs, joyGetPosEx, joyGetDevCapsA ← Windows 3.1 時代のジョイスティック API
 ```
 
-対応する設定は `HKCU\SOFTWARE\FALCOM\ED5_XP` の `Joystick`（ジョイスティック ON/OFF）と
-`DirectInput`（DirectInput ON/OFF）の 2 つ（[上の表](#設定の保存先はレジストリ-1)）。
+**DirectInput はキーボード専用、ジョイスティックは WinMM 専用。** 逆アセンブルで確定。
+
+#### 初期化の順序（`0x450660` 付近。`/LOG` 付きで起動すると同じ文言がログに出る）
+
+```
+InitInput
+  DirectInput (0x4d14d0) == 0  →  "DirectInput Disable"
+  else  0x42b8d0:
+    DirectInputCreateA(hInst, 0x500, &lpDI, NULL)          ; 0x49f9a8 の thunk 経由
+    lpDI->CreateDevice(GUID_SysKeyboard, &dev, NULL)       ; GUID_SysKeyboard (0x4ac708) しか参照しない
+    dev->SetDataFormat(...)                                 ; c_dfDIKeyboard 相当
+    dev->SetCooperativeLevel(hwnd, 6)                       ; DISCL_NONEXCLUSIVE | DISCL_FOREGROUND
+    dev->Acquire()                                          → "Direct Input OK"
+InitJoyStick  0x42c0b0:
+  n = joyGetNumDevs()                                       → "JoyStickNum = n"
+  for id in 0..n-1:
+      if joyGetPosEx(id, {dwSize=0x34, dwFlags=0x8ff}) == JOYERR_NOERROR: break   ; 最初に成功した 1 台
+  使う ID → 0x4d6918。初期化時の dwXpos / dwYpos を中央値として保存 (0x4d6928 / 0x4d692c)
+  joyGetDevCapsA(id, &caps, 0x194)  → wXmax-wXmin, wYmax-wYmin を保存 (0x4d6948 / 0x4d694c)
+  成功なら 0x4d68f1 = 1
+```
+
+`.rdata` には `GUID_SysMouse` / `GUID_Joystick` / `IID_IDirectInput2A` / `IID_IDirectInputDevice2A` も
+入っているが、**コードから参照されているのは `GUID_SysKeyboard` だけ。**
+DirectInput でジョイスティックを列挙する経路は存在しない。
+
+#### ポーリング（`0x42c190`）
+
+```
+Joystick 設定 (0x4d14d4) == 0 or 初期化失敗 (0x4d68f1 == 0)  →  入力なし
+joyGetPosEx(id, {dwFlags = 0x883})       ; JOY_RETURNX | JOY_RETURNY | JOY_RETURNBUTTONS | JOY_USEDEADZONE
+x = ((dwXpos - 中央X) << 8) / Xレンジ     ; -128..128 相当
+y = 同様
+x < -64 → 左(0x04)   x > 64 → 右(0x08)
+y < -64 → 上(0x01)   y > 64 → 下(0x02)
+dwButtons bit0 → 0x20    dwButtons bit1 → 0x40
+```
 
 | 事実 | 帰結 |
 |---|---|
-| 入力 API を呼ぶのは exe 自身 | ED4 の `DXIDev` と違い、入力の実装を差し替える余地が無い |
-| `DirectInputCreateA` と `joyGetPosEx` の両方を持つ | `DirectInput` の設定で経路を切り替えていると見られるが、**どの設定でどちらを使うかは未確認** |
-| どちらも XInput 以前の API | **XInput でしか中身を出さないコントローラーからは入力が取れない。** ハンドヘルド端末で起きる（[setup.md 7.3](setup.md#73-ゲームパッド--rog-xbox-ally-などのハンドヘルド)） |
+| ジョイスティックは **WinMM の `joyGetPosEx`** でしか読まない | DirectInput / XInput の設定やシムは効かない。効くのは **WinMM 層**（joy.cpl の「優先デバイス」、`winmm.dll` の差し替え） |
+| **最初に `joyGetPosEx` が成功した ID** を使う。軸やボタンを持つかは見ない | 空の HID が先に見えると、そこに固定されて以後の入力は読まれない。ハンドヘルド端末で起きる（[setup.md 7.3](setup.md#73-ゲームパッド--rog-xbox-ally-などのハンドヘルド)） |
+| `JOY_RETURNPOV` を要求しない | **POV ハット（十字キー）は読まない。** X/Y 軸（左スティック）だけ |
+| ボタンは bit0 / bit1 のみ | **ボタン 1・2 しか使わない** |
+| 中央値は起動時の位置 | 起動時にスティックを倒していると以後ずれる |
+| `DirectInput` 設定はキーボード入力の方式だけを切り替える | OFF にすると `GetAsyncKeyState` 経路になる。**ジョイスティックには無関係** |
+| `Joystick` 設定はゲーム内メニューでも切り替わる（`0x41d3ce` 付近で 0x4d14d4 を書く） | レジストリ値と食い違っていてもゲーム内で ON にできる |
 
-ED4 の入力は `DLLDV\DXIDev`（[1.3](#dlldv--実行時にロードされるドライバ)）が担うため、
-同じ端末で **ED4 のパッドは効くのに ED5 だけ効かない** という差が出る。
+ED3 も exe 自身が `DirectInputCreateA` を呼ぶが `joyGetPosEx` は import していないので、
+ジョイスティックの読み方は ED5 と違う（ED3 の解析は未実施）。ED4 は `DLLDV\DXIDev`（[1.3](#dlldv--実行時にロードされるドライバ)）。
+**3 本のうち WinMM でジョイスティックを読むのは ED5 だけ。**
+
+#### デバッグログ
+
+コマンドライン引数に `/LOG` があると（`0x45046e` で `strstr`）、`ED5TXT.LOG` に初期化の各段階
+（`InitJoyStick` / `JoyStickNum = n` / `Direct Input OK` など）を書き出す。
+出力先はカレントディレクトリと見られるが未確認。`/SOUND_OFF` も同じ場所で解釈される。
 
 ### セーブデータの保存先
 
